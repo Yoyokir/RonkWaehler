@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wahl</title>
+<style>
+  :root {
+    --bg: #f5f5f7;
+    --card-bg: #ffffff;
+    --text: #1d1d1f;
+    --text-muted: #6e6e73;
+    --accent: #ff5252;
+    --accent-hover: #e64545;
+    --accent-active: #4caf50;
+    --accent-active-hover: #43a047;
+    --border: #e5e5e7;
+    --shadow: rgba(0, 0, 0, 0.08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121214;
+      --card-bg: #1c1c1e;
+      --text: #f5f5f7;
+      --text-muted: #a1a1a6;
+      --accent: #ff6b6b;
+      --accent-hover: #ff8787;
+      --accent-active: #5fd068;
+      --accent-active-hover: #7ade7f;
+      --border: #2c2c2e;
+      --shadow: rgba(0, 0, 0, 0.4);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #121214;
+    --card-bg: #1c1c1e;
+    --text: #f5f5f7;
+    --text-muted: #a1a1a6;
+    --accent: #ff6b6b;
+    --accent-hover: #ff8787;
+    --accent-active: #5fd068;
+    --accent-active-hover: #7ade7f;
+    --border: #2c2c2e;
+    --shadow: rgba(0, 0, 0, 0.4);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 32px 16px;
+  }
+
+  .counter-wrap {
+    text-align: center;
+    margin-bottom: 40px;
+  }
+
+  .counter-label {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 6px;
+  }
+
+  .counter {
+    font-size: clamp(3rem, 12vw, 5rem);
+    font-weight: 700;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    transition: transform 0.15s ease;
+  }
+
+  .counter.bump {
+    transform: scale(1.12);
+  }
+
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 32px 28px;
+    max-width: 360px;
+    width: 100%;
+    box-shadow: 0 8px 24px var(--shadow);
+    text-align: center;
+  }
+
+  .status {
+    font-size: 0.95rem;
+    color: var(--text-muted);
+    margin-bottom: 20px;
+    min-height: 1.2em;
+  }
+
+  button.vote-btn {
+    width: 100%;
+    padding: 18px 24px;
+    font-size: 1.15rem;
+    font-weight: 600;
+    border: none;
+    border-radius: 14px;
+    cursor: pointer;
+    color: white;
+    background: var(--accent);
+    transition: background 0.15s ease, transform 0.1s ease;
+  }
+
+  button.vote-btn:hover:not(:disabled) {
+    background: var(--accent-hover);
+  }
+
+  button.vote-btn:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+
+  button.vote-btn.voted {
+    background: var(--accent-active);
+  }
+
+  button.vote-btn.voted:hover:not(:disabled) {
+    background: var(--accent-active-hover);
+  }
+
+  button.vote-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .hint {
+    margin-top: 16px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+  }
+
+  .error {
+    margin-top: 16px;
+    font-size: 0.85rem;
+    color: var(--accent);
+  }
+</style>
+</head>
+<body>
+
+  <div class="counter-wrap">
+    <div class="counter-label">Stimmen insgesamt</div>
+    <div class="counter" id="counter">–</div>
+  </div>
+
+  <div class="card">
+    <div class="status" id="status">Wird geladen …</div>
+    <button class="vote-btn" id="voteBtn" disabled>Wählen</button>
+    <div class="hint">Jeder mit Zugriff auf diese Seite kann einmal wählen und seine Stimme jederzeit wieder zurückziehen.</div>
+    <div class="error" id="error"></div>
+  </div>
+
+<script>
+(async () => {
+  const counterEl = document.getElementById('counter');
+  const statusEl = document.getElementById('status');
+  const btnEl = document.getElementById('voteBtn');
+  const errorEl = document.getElementById('error');
+
+  let db = null;
+  let user = null;
+  let uid = null;
+  let currentlyVoted = false;
+  let lastCount = null;
+
+  function showError(msg) {
+    errorEl.textContent = msg;
+  }
+
+  function renderCount(n) {
+    if (lastCount !== null && n !== lastCount) {
+      counterEl.classList.add('bump');
+      setTimeout(() => counterEl.classList.remove('bump'), 150);
+    }
+    lastCount = n;
+    counterEl.textContent = n;
+  }
+
+  function renderButton() {
+    btnEl.disabled = false;
+    if (currentlyVoted) {
+      btnEl.textContent = 'Stimme zurückziehen';
+      btnEl.classList.add('voted');
+      statusEl.textContent = 'Du hast gewählt.';
+    } else {
+      btnEl.textContent = 'Wählen';
+      btnEl.classList.remove('voted');
+      statusEl.textContent = 'Du hast noch nicht gewählt.';
+    }
+  }
+
+  try {
+    db = await claude.use('db');
+    user = await claude.use('user');
+  } catch (e) {
+    db = null;
+    user = null;
+  }
+
+  if (!db || !user) {
+    statusEl.textContent = 'Abstimmung ist in dieser Ansicht nicht verfügbar.';
+    counterEl.textContent = '–';
+    return;
+  }
+
+  try {
+    uid = await user.id();
+  } catch (e) {
+    uid = null;
+  }
+
+  if (!uid) {
+    statusEl.textContent = 'Du konntest nicht identifiziert werden.';
+    return;
+  }
+
+  const votersCol = db.collection('voters');
+
+  votersCol.onSnapshot((snap) => {
+    const docs = snap.docs || [];
+    renderCount(docs.length);
+    currentlyVoted = docs.some(d => d.id === uid);
+    renderButton();
+  }, (err) => {
+    showError('Verbindung zur Abstimmung verloren.');
+  });
+
+  btnEl.addEventListener('click', async () => {
+    btnEl.disabled = true;
+    errorEl.textContent = '';
+    try {
+      if (currentlyVoted) {
+        await votersCol.doc(uid).delete();
+      } else {
+        await votersCol.doc(uid).set({ voted: true, votedAt: Date.now() });
+      }
+    } catch (e) {
+      if (e && e.code === 'invalid_argument') {
+        showError('Du hast keine Berechtigung zum Wählen.');
+      } else {
+        showError('Aktion fehlgeschlagen, bitte erneut versuchen.');
+      }
+    } finally {
+      btnEl.disabled = false;
+    }
+  });
+})();
+</script>
+
+</body>
+</html>
